@@ -1,0 +1,110 @@
+#!/bin/bash
+
+#v1.0
+
+FILE="$1"
+
+REPLACE=0 # 1 is False
+FOLDER="Converted_comics"
+WORKING="Working"
+
+DIR="${FILE%.*}"
+NAME="${FILE%.*}"
+
+usage="$(cat <<-EOF
+$(basename "$0") file
+Example :
+$(basename "$0") myfile.cbr
+EOF
+)"
+
+
+function unarchive-comic {
+    # Test if archive is RAR
+    if [[ $(file --mime-type -b "$FILE") == application/x-rar ]]; then
+        echo "------$FILE is rared"
+        mkdir -p "$WORKING/$DIR"
+        echo "----Extraction de $FILE"
+        unrar x ./"$FILE" -o "$WORKING/$DIR" -idq
+    else
+        echo "------WARNING : $FILE is not RAR."
+        exit 1
+    fi
+}
+
+function archive-comic {
+    echo "------Création archive $NAME.cbz"
+    pushd "$WORKING/$DIR" 1>/dev/null || return
+    zip -q -r "../../$FOLDER/$DIR.cbz" -- * || return 1
+    popd 1>/dev/null || return
+    rm -r "${WORKING:?}/$DIR"
+    echo "------archive terminée"
+}
+
+function check-comic {
+    pushd "$FOLDER" 1>/dev/null || return
+    # if [[ $FILE == *.cbz ]]; then
+    if [[ $(file --mime-type -b "$NAME.cbz") == application/zip ]]; then
+        if unzip -t -qq "$NAME.cbz"; then
+            echo "------$NAME.cbz is OK"
+             # 0 = true
+             popd 1>/dev/null || return
+             return 0
+        else
+            # 1 = false
+            echo "------$NAME.cbz is KO !!!!!!!!!"
+            popd 1>/dev/null || return
+            return 1
+        fi
+    else
+        echo "------ERROR $NAME.cbz is not zipped"
+        exit 1
+    fi
+}
+
+function move-comic {
+    echo "------moving $NAME.cbz"
+    rm "$FILE"
+    mv -f "$FOLDER/$NAME.cbz" .
+}
+
+function rename-false-cbr {
+    echo "------renaming $NAME, false CBR"
+    mv "$FILE" "${FILE%.cbr}.cbz"
+}
+
+function treat-comic {
+    echo "--Treating $FILE"
+    if [[ $(file --mime-type -b "$FILE") == application/zip && $FILE == *.cbr ]]; then
+        echo "------$FILE a false cbr, it's a zip !"
+        if [[ $REPLACE -eq 0 ]]; then
+            echo "------Renommage du fichier !!!!"
+            rename-false-cbr
+        else
+            echo "------Fichier non renommé"
+        fi
+    elif [[ $(file --mime-type -b "$FILE") == application/x-rar ]]; then
+        unarchive-comic || exit 1
+        mkdir -p "$FOLDER"
+        archive-comic
+        if [[ $REPLACE -eq 0 ]]; then
+            echo "------Remplacement du fichier !!!!"
+            # Check integrity and move
+            if check-comic; then move-comic; fi
+            rm -rf "$FOLDER"
+        else
+            if check-comic; then echo "------Fichier non remplacés, situés dans '$FOLDER'"; fi
+        fi
+    fi
+}
+
+# MAIN program
+
+echo "[`date`]"
+echo $(realpath "$FILE")
+
+treat-comic
+
+rm -rf "$WORKING"
+
+echo "--Done with this file"
