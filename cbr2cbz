@@ -4,41 +4,56 @@
 
 FILE="$1"
 
-REPLACE=0 # 1 is False
+REPLACE=1 # 1 is False
 FOLDER="Converted_comics"
 WORKING="Working"
 
-DIR="${FILE%.*}"
-NAME="${FILE%.*}"
+DIR="${FILE%.*}"  # without the extension
+NAME="${FILE%.*}"  # same
 
-usage="$(cat <<-EOF
-$(basename "$0") file
-Example :
-$(basename "$0") myfile.cbr
-EOF
-)"
+shift 1
+
+while :; do
+    case $1 in
+	    -r|--replace)       # Takes an option argument; ensure it has been specified.
+            echo "REPLACE is TRUE"
+            REPLACE=0
+            ;;
+        --)              # End of all options.
+            shift
+            break
+            ;;
+        -?*)
+            printf 'WARN: Unknown option (ignored): %s\n' "$1" >&2
+            ;;
+        *)               # Default case: No more options, so break out of the loop.
+            break
+    esac
+
+    shift
+done
 
 
 function unarchive-comic {
     # Test if archive is RAR
     if [[ $(file --mime-type -b "$FILE") == application/x-rar ]]; then
-        echo "------$FILE is rared"
+        echo "$FILE is rared"
         mkdir -p "$WORKING/$DIR"
-        echo "----Extraction de $FILE"
+        echo "Extraction de $FILE"
         unrar x ./"$FILE" -o "$WORKING/$DIR" -idq
     else
-        echo "------WARNING : $FILE is not RAR."
+        echo "WARNING : $FILE is not RAR."
         exit 1
     fi
 }
 
 function archive-comic {
-    echo "------Création archive $NAME.cbz"
+    echo "Création archive $NAME.cbz"
     pushd "$WORKING/$DIR" 1>/dev/null || return
     zip -q -r "../../$FOLDER/$DIR.cbz" -- * || return 1
     popd 1>/dev/null || return
     rm -r "${WORKING:?}/$DIR"
-    echo "------archive terminée"
+    echo "archive terminée"
 }
 
 function check-comic {
@@ -46,65 +61,68 @@ function check-comic {
     # if [[ $FILE == *.cbz ]]; then
     if [[ $(file --mime-type -b "$NAME.cbz") == application/zip ]]; then
         if unzip -t -qq "$NAME.cbz"; then
-            echo "------$NAME.cbz is OK"
+            echo "$NAME.cbz is OK"
              # 0 = true
              popd 1>/dev/null || return
              return 0
         else
             # 1 = false
-            echo "------$NAME.cbz is KO !!!!!!!!!"
+            echo "$NAME.cbz is KO !!!!!!!!!"
             popd 1>/dev/null || return
             return 1
         fi
     else
-        echo "------ERROR $NAME.cbz is not zipped"
+        echo "ERROR $NAME.cbz is not zipped"
         exit 1
     fi
 }
 
 function move-comic {
-    echo "------moving $NAME.cbz"
+    echo "moving $NAME.cbz"
     rm "$FILE"
     mv -f "$FOLDER/$NAME.cbz" .
 }
 
 function rename-false-cbr {
-    echo "------renaming $NAME, false CBR"
+    echo "renaming $NAME, false CBR"
     mv "$FILE" "${FILE%.cbr}.cbz"
 }
 
 function treat-comic {
     echo "--Treating $FILE"
     if [[ $(file --mime-type -b "$FILE") == application/zip && $FILE == *.cbr ]]; then
-        echo "------$FILE a false cbr, it's a zip !"
+        echo "$FILE a false cbr, it's a zip !"
         if [[ $REPLACE -eq 0 ]]; then
-            echo "------Renommage du fichier !!!!"
+            echo "Renommage du fichier !!!!"
             rename-false-cbr
         else
-            echo "------Fichier non renommé"
+            echo "Fichier non renommé"
         fi
+    elif [[ $(file --mime-type -b "$FILE") == application/zip && $FILE == *.cbz ]]; then
+        echo "File is zipped and a .cbz, nothing to do"
     elif [[ $(file --mime-type -b "$FILE") == application/x-rar ]]; then
         unarchive-comic || exit 1
         mkdir -p "$FOLDER"
         archive-comic
         if [[ $REPLACE -eq 0 ]]; then
-            echo "------Remplacement du fichier !!!!"
+            echo "Remplacement du fichier !!!!"
             # Check integrity and move
             if check-comic; then move-comic; fi
             rm -rf "$FOLDER"
         else
-            if check-comic; then echo "------Fichier non remplacés, situés dans '$FOLDER'"; fi
+            if check-comic; then echo "Fichier non remplacés, situés dans '$FOLDER'"; fi
         fi
     fi
 }
 
 # MAIN program
 
-echo "[`date`]"
+echo "################################"
 echo $(realpath "$FILE")
 
 treat-comic
 
 rm -rf "$WORKING"
 
-echo "--Done with this file"
+echo "Done with this file"
+echo "################################"

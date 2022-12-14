@@ -1,0 +1,3 @@
+#!/bin/bash
+
+find -type d -name "Converted_comics" -exec rm -rf {} \;
